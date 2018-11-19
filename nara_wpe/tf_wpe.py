@@ -99,7 +99,7 @@ def get_power(signal, axis=-2):
     """
     power = tf.real(signal) ** 2 + tf.imag(signal) ** 2
     power = tf.reduce_mean(power, axis=axis)
-
+    
     return power
 
 
@@ -340,7 +340,7 @@ def wpe(Y, taps=10, delay=3, iterations=3, mode='inv'):
 
     Args:
         Y (tf.Tensor): Observed signal with shape (F, D, T)
-        num_frames (tf.Tensor): Number of frames for each signal in the batch
+        num_frames (tf.Tensor): Number of frames for each signal in the batch 
         taps (int, optional): Defaults to 10. Number of filter taps.
         delay (int, optional): Defaults to 3.
         iterations (int, optional): Defaults to 3.
@@ -370,7 +370,7 @@ def batched_wpe(Y, num_frames, taps=10, delay=3, iterations=3, mode='inv'):
 
     Args:
         Y (tf.Tensor): Observed signal with shape (B, F, D, T)
-        num_frames (tf.Tensor): Number of frames for each signal in the batch
+        num_frames (tf.Tensor): Number of frames for each signal in the batch 
         taps (int, optional): Defaults to 10. Number of filter taps.
         delay (int, optional): Defaults to 3.
         iterations (int, optional): Defaults to 3.
@@ -379,7 +379,7 @@ def batched_wpe(Y, num_frames, taps=10, delay=3, iterations=3, mode='inv'):
             "solve" solves Rx=r for x
 
     Returns:
-        tf.Tensor: Dereverberated signal of shape (B, F, D, T).
+        tf.Tensor: Dereverberated signal.
     """
 
     def _inner_func(signals):
@@ -446,7 +446,7 @@ def batched_wpe_step(
     Args:
         Y (tf.Tensor): Complex valued STFT signal with shape (B, F, D, T)
         inverse_power (tf.Tensor): Power signal with shape (B, F, T)
-        num_frames (tf.Tensor): Number of frames for each signal in the batch
+        num_frames (tf.Tensor): Number of frames for each signal in the batch 
         taps (int, optional): Filter order
         delay (int, optional): Delay as a guard interval, such that X does not become zero.
         mode (str, optional): Specifies how R^-1@r is calculate:
@@ -461,8 +461,7 @@ def batched_wpe_step(
         Dereverberated signal of shape B, (F, D, T)
     """
     def _inner_func(signals):
-        _Y, _inverse_power, _Y_stats = signals
-        out = wpe_step(_Y, _inverse_power, taps, delay, mode, _Y_stats)
+        out = wpe_step(*signals[:2], taps, delay, mode, signals[-1])
         return out
 
     if Y_stats is None:
@@ -473,7 +472,7 @@ def batched_wpe_step(
 
 def block_wpe_step(
         Y, inverse_power, taps=10, delay=3, mode='inv',
-        block_length_in_seconds=2., alpha=0.7,
+        block_length_in_seconds=2., forgetting_factor=0.7,
         fft_shift=256, sampling_rate=16000):
     """Applies wpe in a block-wise fashion.
 
@@ -485,9 +484,9 @@ def block_wpe_step(
         mode (str, optional): Specifies how R^-1@r is calculate:
             "inv" calculates the inverse of R directly and then uses matmul
             "solve" solves Rx=r for x
-        block_length_in_seconds (float, optional): Length of each block in
+        block_length_in_seconds (float, optional): Length of each block in 
             seconds
-        alpha (float, optional): Forgetting factor for the signal
+        forgetting_factor (float, optional): Forgetting factor for the signal
             statistics between the blocks
         fft_shift (int, optional): Shift used for the STFT.
         sampling_rate (int, optional): Sampling rate of the observed signal.
@@ -529,10 +528,10 @@ def block_wpe_step(
                     taps, delay
                 )
                 return (
-                    (1. - alpha) * correlation_matrix_tm1
-                    + alpha * correlation_matrix,
-                    (1. - alpha) * correlation_vector_tm1
-                    + alpha * correlation_vector
+                    (1. - forgetting_factor) * correlation_matrix_tm1
+                    + forgetting_factor * correlation_matrix,
+                    (1. - forgetting_factor) * correlation_vector_tm1
+                    + forgetting_factor * correlation_vector
                 )
 
             correlation_matrix, correlation_vector = tf.case(
@@ -578,22 +577,22 @@ def block_wpe_step(
 
 def batched_block_wpe_step(
         Y, inverse_power, num_frames, taps=10, delay=3, mode='inv',
-        block_length_in_seconds=2., alpha=0.7,
+        block_length_in_seconds=2., forgetting_factor=0.7,
         fft_shift=256, sampling_rate=16000):
     """Batched single WPE step. More suited for backpropagation.
 
     Args:
         Y (tf.Tensor): Complex valued STFT signal with shape (B, F, D, T)
         inverse_power (tf.Tensor): Power signal with shape (B, F, T)
-        num_frames (tf.Tensor): Number of frames for each signal in the batch
+        num_frames (tf.Tensor): Number of frames for each signal in the batch 
         taps (int, optional): Filter order
         delay (int, optional): Delay as a guard interval, such that X does not become zero.
         mode (str, optional): Specifies how R^-1@r is calculate:
             "inv" calculates the inverse of R directly and then uses matmul
             "solve" solves Rx=r for x
-        block_length_in_seconds (float, optional): Length of each block in
+        block_length_in_seconds (float, optional): Length of each block in 
             seconds
-        alpha (float, optional): Forgetting factor for the signal
+        forgetting_factor (float, optional): Forgetting factor for the signal
             statistics between the blocks
         fft_shift (int, optional): Shift used for the STFT.
         sampling_rate (int, optional): Sampling rate of the observed signal.
@@ -602,10 +601,9 @@ def batched_block_wpe_step(
         Dereverberated signal of shape B, (F, D, T)
     """
     def _inner_func(signals):
-        _Y, _inverse_power = signals
         out = block_wpe_step(
-            _Y, _inverse_power, taps, delay,
-            mode, block_length_in_seconds, alpha,
+            *signals, taps, delay,
+            mode, block_length_in_seconds, forgetting_factor,
             fft_shift, sampling_rate)
         return out
 
@@ -618,7 +616,7 @@ def online_wpe_step(
     ):
     """
     One step of online dereverberation
-
+    
     Args:
         input_buffer (tf.Tensor): Buffer of shape (taps+delay+1, F, D)
         power_estimate (tf.Tensor): Estimate for the current PSD
@@ -657,7 +655,7 @@ def online_wpe_step(
         filter_taps +
         tf.einsum('fi,fm->fim', kalman_gain, tf.conj(pred))
     )
-    return pred, inv_cov_k, filter_taps_k
+    return pred, inv_cov_k, filter_taps_k 
 
 
 def recursive_wpe(
@@ -671,7 +669,7 @@ def recursive_wpe(
         alpha (float): Smoothing factor for the recursion
         taps (int, optional): Number of filter taps.
         delay (int, optional): Delay
-        only_use_final_filters (bool, optional): Applies only the final
+        only_use_final_filters (bool, optional): Applies only the final 
             estimated filter coefficients to the whole signal. This is for
             debugging purposes only and makes this method a offline one.
 
@@ -737,10 +735,10 @@ def batched_recursive_wpe(
         Y (tf.Tensor): Observed signal of shape (B, T, F, D)
         power_estimate (tf.Tensor): Estimate for the clean signal PSD of shape (B, T, F)
         alpha (float): Smoothing factor for the recursion
-        num_frames (tf.Tensor): Number of frames for each signal in the batch
+        num_frames (tf.Tensor): Number of frames for each signal in the batch 
         K (int, optional): Number of filter taps.
         delay (int, optional): Delay
-        only_use_final_filters (bool, optional): Applies only the final
+        only_use_final_filters (bool, optional): Applies only the final 
             estimated filter coefficients to the whole signal. This is for
             debugging purposes only and makes this method a offline one.
 
@@ -748,9 +746,8 @@ def batched_recursive_wpe(
         Dereverberated signal of shape (B, T, F, D)
     """
     def _inner_func(signals):
-        _Y, _power_estimate = signals
         out = recursive_wpe(
-            _Y, _power_estimate, alpha, taps, delay, only_use_final_filters)
+            *signals, alpha, taps, delay, only_use_final_filters)
         return out
 
     return _batch_wrapper(
