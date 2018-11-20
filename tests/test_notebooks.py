@@ -10,8 +10,9 @@ from nara_wpe import project_root
 
 
 def _notebook_run(path):
-    """Execute a notebook via nbconvert and collect output.
-       :returns (parsed nb object, execution errors)
+    """
+    Execute a notebook via nbconvert and collect output"
+
     """
     dirname = os.path.dirname(str(path))
     os.chdir(dirname)
